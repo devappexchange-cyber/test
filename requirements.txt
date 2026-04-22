@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+composio
+composio-openai-agents
+pydantic
