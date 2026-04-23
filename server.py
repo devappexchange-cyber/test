@@ -1,46 +1,53 @@
 from fastapi import FastAPI, Request
-import json
-import time
 
 app = FastAPI()
 
 
 @app.post("/mcp")
 async def mcp(request: Request):
-
-    start = time.time()
-
     body = await request.json()
 
-    print("\n================ MCP REQUEST ================\n")
-    print(json.dumps(body, indent=2))
-    print("\n=============================================\n")
+    print("\n=== MCP REQUEST ===")
+    print(body)
 
     method = body.get("method")
+    request_id = body.get("id")
 
     response = {
         "jsonrpc": "2.0",
-        "id": body.get("id")
+        "id": request_id
     }
 
-    # TOOL LIST
-    if method == "tools/list":
+    # ✅ REQUIRED: initialize
+    if method == "initialize":
+        response["result"] = {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {
+                "tools": {}
+            }
+        }
+        return response
+
+    # ✅ REQUIRED: tools/list
+    elif method == "tools/list":
         response["result"] = {
             "tools": [
                 {
                     "name": "demo_tool",
-                    "description": "A test tool",
+                    "description": "Test tool",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "task": {"type": "string"}
-                        }
+                        },
+                        "required": ["task"]
                     }
                 }
             ]
         }
+        return response
 
-    # TOOL CALL
+    # ✅ REQUIRED: tools/call
     elif method == "tools/call":
         params = body.get("params", {})
         args = params.get("arguments", {})
@@ -49,16 +56,15 @@ async def mcp(request: Request):
             "content": [
                 {
                     "type": "text",
-                    "text": f"Executed task: {args}"
+                    "text": f"Executed: {args}"
                 }
             ]
         }
+        return response
 
-    else:
-        response["error"] = {
-            "message": f"Unknown method: {method}"
-        }
-
-    print("Response time:", time.time() - start)
-
+    # ❌ fallback
+    response["error"] = {
+        "code": -32601,
+        "message": f"Unknown method: {method}"
+    }
     return response
