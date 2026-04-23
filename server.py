@@ -1,6 +1,15 @@
 from fastapi import FastAPI, Request
+from composio import Composio
+from composio_openai_agents import OpenAIAgentsProvider
+import os
 
 app = FastAPI()
+
+# Initialize Composio
+composio = Composio(
+    api_key=os.environ["COMPOSIO_API_KEY"],
+    provider=OpenAIAgentsProvider()
+)
 
 
 @app.post("/mcp")
@@ -18,7 +27,7 @@ async def mcp(request: Request):
         "id": request_id
     }
 
-    # ✅ REQUIRED: initialize
+    # ✅ 1. Initialize
     if method == "initialize":
         response["result"] = {
             "protocolVersion": "2025-11-25",
@@ -28,41 +37,61 @@ async def mcp(request: Request):
         }
         return response
 
-    # ✅ REQUIRED: tools/list
+    # ✅ 2. List tools (from Composio)
     elif method == "tools/list":
+        session = composio.create(user_id="azure_user")
+
+        tools = session.tools()
+
+        mcp_tools = []
+
+        for t in tools:
+            mcp_tools.append({
+                "name": t.get("name"),
+                "description": t.get("description", ""),
+                "inputSchema": t.get("input_schema", {
+                    "type": "object",
+                    "properties": {}
+                })
+            })
+
         response["result"] = {
-            "tools": [
-                {
-                    "name": "demo_tool",
-                    "description": "Test tool",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "task": {"type": "string"}
-                        },
-                        "required": ["task"]
-                    }
-                }
-            ]
+            "tools": mcp_tools
         }
         return response
 
-    # ✅ REQUIRED: tools/call
+    # ✅ 3. Call tool
     elif method == "tools/call":
         params = body.get("params", {})
-        args = params.get("arguments", {})
+        tool_name = params.get("name")
+        arguments = params.get("arguments", {})
 
-        response["result"] = {
-            "content": [
-                {
-                    "type": "text",
-                    "text": f"Executed: {args}"
-                }
-            ]
-        }
+        session = composio.create(user_id="azure_user")
+
+        try:
+            result = session.execute({
+                "name": tool_name,
+                "arguments": arguments
+            })
+
+            response["result"] = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": str(result)
+                    }
+                ]
+            }
+
+        except Exception as e:
+            response["error"] = {
+                "code": -32000,
+                "message": str(e)
+            }
+
         return response
 
-    # ❌ fallback
+    # ❌ Unknown method
     response["error"] = {
         "code": -32601,
         "message": f"Unknown method: {method}"
