@@ -5,7 +5,7 @@ import os
 
 app = FastAPI()
 
-# Initialize Composio
+# 🔐 Composio init (Render env)
 composio = Composio(
     api_key=os.environ["COMPOSIO_API_KEY"],
     provider=OpenAIAgentsProvider()
@@ -27,7 +27,9 @@ async def mcp(request: Request):
         "id": request_id
     }
 
-    # ✅ 1. Initialize
+    # =========================================================
+    # 1. INITIALIZE
+    # =========================================================
     if method == "initialize":
         response["result"] = {
             "protocolVersion": "2025-11-25",
@@ -37,50 +39,61 @@ async def mcp(request: Request):
         }
         return response
 
-    # ✅ 2. List tools (from Composio)
+    # =========================================================
+    # 2. DYNAMIC TOOLS LIST (ALL COMPOSIO TOOLS)
+    # =========================================================
     elif method == "tools/list":
-        session = composio.create(user_id="azure_user")
+        try:
+            session = composio.create(user_id="azure_user")
 
-        tools = session.tools()
+            tools = session.tools()
 
-        mcp_tools = []
+            mcp_tools = []
 
-        for t in tools:
-            mcp_tools.append({
-                "name": t.get("name"),
-                "description": t.get("description", ""),
-                "inputSchema": t.get("input_schema", {
-                    "type": "object",
-                    "properties": {}
+            for t in tools:
+                mcp_tools.append({
+                    "name": t.get("name"),
+                    "description": t.get("description", ""),
+                    "inputSchema": t.get("input_schema", {
+                        "type": "object",
+                        "properties": {}
+                    })
                 })
-            })
 
-        print("TOOLS SENT TO AZURE:", mcp_tools)
+            print(f"TOOLS SENT TO AZURE: {len(mcp_tools)} tools")
 
-        response["result"] = {
-            "tools": mcp_tools
-        }
+            response["result"] = {
+                "tools": mcp_tools
+            }
+
+        except Exception as e:
+            print("TOOLS LIST ERROR:", str(e))
+            response["error"] = {
+                "code": -32000,
+                "message": str(e)
+            }
+
         return response
 
-    # ✅ 3. Call tool (🔥 FIXED HERE)
+    # =========================================================
+    # 3. DYNAMIC TOOL EXECUTION (NO HARDCODE)
+    # =========================================================
     elif method == "tools/call":
         params = body.get("params", {})
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
         print("TOOL CALL:", tool_name)
-        print("ARGUMENTS:", arguments)
+        print("ARGS:", arguments)
 
         session = composio.create(user_id="azure_user")
 
         try:
-            # 🔥 IMPORTANT FIX: pass STRING, not object
+            # 🔥 FIXED: correct Composio execution format
             result = session.execute(
                 tool_name,
                 arguments
             )
-
-            print("TOOL RESULT:", result)
 
             response["result"] = {
                 "content": [
@@ -92,7 +105,7 @@ async def mcp(request: Request):
             }
 
         except Exception as e:
-            print("ERROR:", str(e))
+            print("EXECUTION ERROR:", str(e))
 
             response["error"] = {
                 "code": -32000,
@@ -101,9 +114,12 @@ async def mcp(request: Request):
 
         return response
 
-    # ❌ Unknown method
+    # =========================================================
+    # UNKNOWN METHOD
+    # =========================================================
     response["error"] = {
         "code": -32601,
         "message": f"Unknown method: {method}"
     }
+
     return response
