@@ -5,7 +5,7 @@ const app = express();
 app.use(express.json());
 
 // 🔥 Replace ONLY this with your MCP ID (not full URL)
-const MCP_BASE_URL = "https://backend.composio.dev/v3/mcp/YOUR_MCP_ID";
+const MCP_BASE_URL = "https://backend.composio.dev/v3/mcp/4da5f642-1603-4386-8918-df12fd4354c9?include_composio_helper_actions=true&user_id=user_123";
 
 // 🔐 API key from Render env
 const API_KEY = process.env.COMPOSIO_API_KEY;
