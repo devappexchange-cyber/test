@@ -55,24 +55,32 @@ async def mcp(request: Request):
                 })
             })
 
+        print("TOOLS SENT TO AZURE:", mcp_tools)
+
         response["result"] = {
             "tools": mcp_tools
         }
         return response
 
-    # ✅ 3. Call tool
+    # ✅ 3. Call tool (🔥 FIXED HERE)
     elif method == "tools/call":
         params = body.get("params", {})
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
+        print("TOOL CALL:", tool_name)
+        print("ARGUMENTS:", arguments)
+
         session = composio.create(user_id="azure_user")
 
         try:
-            result = session.execute({
-                "name": tool_name,
-                "arguments": arguments
-            })
+            # 🔥 IMPORTANT FIX: pass STRING, not object
+            result = session.execute(
+                tool_name,
+                arguments
+            )
+
+            print("TOOL RESULT:", result)
 
             response["result"] = {
                 "content": [
@@ -84,6 +92,8 @@ async def mcp(request: Request):
             }
 
         except Exception as e:
+            print("ERROR:", str(e))
+
             response["error"] = {
                 "code": -32000,
                 "message": str(e)
