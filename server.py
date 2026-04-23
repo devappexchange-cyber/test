@@ -2,22 +2,27 @@ from fastapi import FastAPI, Request
 from composio import Composio
 from composio_openai_agents import OpenAIAgentsProvider
 import os
+import json
 
 app = FastAPI()
 
-# 🔐 Composio init (Render env)
 composio = Composio(
     api_key=os.environ["COMPOSIO_API_KEY"],
     provider=OpenAIAgentsProvider()
 )
 
 
+def log(title, data):
+    print(f"\n===== {title} =====")
+    print(json.dumps(data, indent=2, default=str))
+    print("====================\n")
+
+
 @app.post("/mcp")
 async def mcp(request: Request):
     body = await request.json()
 
-    print("\n=== MCP REQUEST ===")
-    print(body)
+    log("INCOMING MCP REQUEST", body)
 
     method = body.get("method")
     request_id = body.get("id")
@@ -28,92 +33,78 @@ async def mcp(request: Request):
     }
 
     # =========================================================
-    # 1. INITIALIZE (REQUIRED BY AZURE MCP)
+    # INIT
     # =========================================================
     if method == "initialize":
         response["result"] = {
             "protocolVersion": "2025-11-25",
-            "capabilities": {
-                "tools": {}
-            }
+            "capabilities": {"tools": {}}
         }
+
+        log("INITIALIZE RESPONSE", response)
         return response
 
     # =========================================================
-    # 2. TOOLS LIST (AZURE SAFE FORMAT)
+    # TOOLS LIST DEBUG (MOST IMPORTANT STEP)
     # =========================================================
     elif method == "tools/list":
-        try:
-            session = composio.create(user_id="azure_user")
-            tools = session.tools()
+        session = composio.create(user_id="azure_user")
 
-            mcp_tools = []
+        tools = session.tools()
 
-            for t in tools:
-                name = t.get("name")
+        log("RAW COMPOSIO TOOLS", tools)
 
-                # 🔥 IMPORTANT: Azure-safe schema (prevents silent rejection)
-                mcp_tools.append({
-                    "name": name,
-                    "description": t.get("description", "No description"),
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "input": {
-                                "type": "object",
-                                "description": "Tool input parameters"
-                            }
-                        },
-                        "required": []
+        mcp_tools = []
+
+        for t in tools:
+            mcp_tools.append({
+                "name": t.get("name"),
+                "description": t.get("description", ""),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "number"}
                     }
-                })
+                }
+            })
 
-            print(f"TOOLS SENT TO AZURE: {len(mcp_tools)}")
+        log("TOOLS SENT TO AZURE", mcp_tools)
 
-            response["result"] = {
-                "tools": mcp_tools
-            }
-
-        except Exception as e:
-            print("TOOLS LIST ERROR:", str(e))
-            response["error"] = {
-                "code": -32000,
-                "message": str(e)
-            }
+        response["result"] = {"tools": mcp_tools}
 
         return response
 
     # =========================================================
-    # 3. TOOL EXECUTION (DYNAMIC - NO HARDCODING)
+    # TOOL CALL DEBUG (CRITICAL)
     # =========================================================
     elif method == "tools/call":
         params = body.get("params", {})
+
+        log("TOOL CALL RECEIVED FROM AZURE", params)
+
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
-        print("TOOL CALL:", tool_name)
-        print("ARGS:", arguments)
+        log("EXTRACTED TOOL NAME", tool_name)
+        log("EXTRACTED ARGUMENTS", arguments)
 
         session = composio.create(user_id="azure_user")
 
         try:
-            # 🔥 FIX: correct Composio call format
-            result = session.execute(
-                tool_name,
-                arguments
-            )
+            result = session.execute(tool_name, arguments)
+
+            log("COMPOSIO RESULT", result)
 
             response["result"] = {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": str(result)
-                    }
-                ]
+                "content": [{
+                    "type": "text",
+                    "text": str(result)
+                }]
             }
 
         except Exception as e:
-            print("EXECUTION ERROR:", str(e))
+            log("EXECUTION ERROR", str(e))
 
             response["error"] = {
                 "code": -32000,
