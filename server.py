@@ -28,7 +28,7 @@ async def mcp(request: Request):
     }
 
     # =========================================================
-    # 1. INITIALIZE
+    # 1. INITIALIZE (REQUIRED BY AZURE MCP)
     # =========================================================
     if method == "initialize":
         response["result"] = {
@@ -40,27 +40,35 @@ async def mcp(request: Request):
         return response
 
     # =========================================================
-    # 2. DYNAMIC TOOLS LIST (ALL COMPOSIO TOOLS)
+    # 2. TOOLS LIST (AZURE SAFE FORMAT)
     # =========================================================
     elif method == "tools/list":
         try:
             session = composio.create(user_id="azure_user")
-
             tools = session.tools()
 
             mcp_tools = []
 
             for t in tools:
+                name = t.get("name")
+
+                # 🔥 IMPORTANT: Azure-safe schema (prevents silent rejection)
                 mcp_tools.append({
-                    "name": t.get("name"),
-                    "description": t.get("description", ""),
-                    "inputSchema": t.get("input_schema", {
+                    "name": name,
+                    "description": t.get("description", "No description"),
+                    "inputSchema": {
                         "type": "object",
-                        "properties": {}
-                    })
+                        "properties": {
+                            "input": {
+                                "type": "object",
+                                "description": "Tool input parameters"
+                            }
+                        },
+                        "required": []
+                    }
                 })
 
-            print(f"TOOLS SENT TO AZURE: {len(mcp_tools)} tools")
+            print(f"TOOLS SENT TO AZURE: {len(mcp_tools)}")
 
             response["result"] = {
                 "tools": mcp_tools
@@ -76,7 +84,7 @@ async def mcp(request: Request):
         return response
 
     # =========================================================
-    # 3. DYNAMIC TOOL EXECUTION (NO HARDCODE)
+    # 3. TOOL EXECUTION (DYNAMIC - NO HARDCODING)
     # =========================================================
     elif method == "tools/call":
         params = body.get("params", {})
@@ -89,7 +97,7 @@ async def mcp(request: Request):
         session = composio.create(user_id="azure_user")
 
         try:
-            # 🔥 FIXED: correct Composio execution format
+            # 🔥 FIX: correct Composio call format
             result = session.execute(
                 tool_name,
                 arguments
